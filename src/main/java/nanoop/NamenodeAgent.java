@@ -18,18 +18,17 @@ import net.bytebuddy.utility.JavaModule;
 public class NamenodeAgent {
 
   private static final String CL = "org.apache.hadoop.hdfs.protocol.ClientProtocol";
-  //private static final String CL = "cmd.Goober";
+  // private static final String CL = "cmd.Goober";
 
   private static TypeDescription findClientProtocol(TypeDescription typeDescription) {
     for (TypeDescription.Generic generic : typeDescription.getInterfaces()) {
-      if(generic.getActualName().equals(CL)) {
+      if (generic.getActualName().equals(CL)) {
         return generic.asErasure();
       }
     }
 
     return null;
   }
-
 
   public static void premain(final String agentArgs, final Instrumentation inst) throws Exception {
     System.out.printf("Starting %s\n", NamenodeAgent.class.getSimpleName());
@@ -39,8 +38,8 @@ public class NamenodeAgent {
       public boolean matches(TypeDescription typeDescription, ClassLoader classLoader, JavaModule module, Class<?> classBeingRedefined,
           ProtectionDomain protectionDomain) {
 
-        if(findClientProtocol(typeDescription) != null && !typeDescription.getActualName().startsWith("com.sun.proxy")) {
-          System.out.println("Found subclass "+typeDescription.getActualName());
+        if (findClientProtocol(typeDescription) != null && !typeDescription.getActualName().startsWith("com.sun.proxy")) {
+          System.out.println("Found subclass " + typeDescription.getActualName());
           return true;
         }
 
@@ -62,15 +61,14 @@ public class NamenodeAgent {
         // .with(AgentBuilder.Listener.StreamWriting.toSystemOut())
         .with(AgentBuilder.TypeStrategy.Default.REDEFINE).installOn(inst);
 
-
-    Thread sd = new Thread(() -> callStats.forEach((k,v)-> System.out.println(v+"\n"+k)));
+    Thread sd = new Thread(() -> callStats.forEach((k, v) -> System.out.println(v + "\n" + k)));
     Runtime.getRuntime().addShutdownHook(sd);
   }
 
   @Advice.OnMethodEnter
   public static long enter() {
-    //System.out.println("Enter "+method.getDeclaringClass().getSimpleName()+"."+method.getName()+" "+Arrays.toString(args));
-    //Thread.dumpStack();
+    // System.out.println("Enter "+method.getDeclaringClass().getSimpleName()+"."+method.getName()+" "+Arrays.toString(args));
+    // Thread.dumpStack();
     return System.nanoTime();
   }
 
@@ -78,17 +76,17 @@ public class NamenodeAgent {
     private long count = 0;
     private long min = Long.MAX_VALUE;
     private long max = Long.MIN_VALUE;
-    private long sum  = 0;
+    private long sum = 0;
 
     public synchronized void addTime(long t) {
-      t = t / 1000000; //TODO use timeunit
+      t = t / 1000000; // TODO use timeunit
 
       count++;
-      if(t < min) {
+      if (t < min) {
         min = t;
       }
 
-      if(t > max) {
+      if (t > max) {
         max = t;
       }
 
@@ -97,17 +95,17 @@ public class NamenodeAgent {
 
     @Override
     public synchronized String toString() {
-      return "Count:"+count+" min:"+min+" max:"+max+" avg:"+(long)(sum/(double)count);
+      return "Count:" + count + " min:" + min + " max:" + max + " avg:" + (long) (sum / (double) count);
     }
   }
 
-  public static Map<String, CallInfo> callStats = new ConcurrentHashMap<>();
+  public static Map<String,CallInfo> callStats = new ConcurrentHashMap<>();
 
   public static final Function<String,CallInfo> CIA = k -> new CallInfo();
 
   @Advice.OnMethodExit
   public static void exit(@Advice.Origin java.lang.reflect.Executable method, @Advice.Enter final long startTime) {
-    System.out.println("Exit "+method.getDeclaringClass().getSimpleName()+"."+method.getName());
+    System.out.println("Exit " + method.getDeclaringClass().getSimpleName() + "." + method.getName());
 
     long endTime = System.nanoTime();
 
@@ -121,7 +119,7 @@ public class NamenodeAgent {
     boolean found = false;
 
     for (StackTraceElement ste : st) {
-      if(ste.getClassName().startsWith("org.apache.accumulo")) {
+      if (ste.getClassName().startsWith("org.apache.accumulo")) {
         sb.append("\tat ");
         sb.append(ste);
         sb.append('\n');
@@ -130,9 +128,9 @@ public class NamenodeAgent {
       }
     }
 
-    if(!found) {
+    if (!found) {
       sb.append("\tat ");
-      sb.append(st[st.length-1]);
+      sb.append(st[st.length - 1]);
       sb.append('\n');
     }
 
