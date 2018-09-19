@@ -20,11 +20,14 @@ accumulo shell -u root -p secret -e 'config -t bulky -s table.file.max=1000'
 ```
 
 The following sections show the nanoop output for each Accumulo process after
-the test.  There was only a single tserver for the test.
+the test.  There was only a single tserver for the test. The times below are in
+milliseconds.  The `Accumulo method` column is the accumulo method that called
+DFS code OR the method at the bottom of the stack.
 
 ## Tablet Server
 
 NN method|Accumulo method|Count|min time|max time|avg time
+---------|---------------|-----|--------|--------|--------
 addBlock|org.apache.hadoop.hdfs.DataStreamer.run|16|1.021|8.945|3.259
 complete|o.a.a.core.file.streams.RateLimitedOutputStream.close|19|0.458|7.882|2.294
 create|o.a.a.core.file.rfile.RFileOperations.openWriter|14|0.948|7.995|3.137
@@ -49,6 +52,7 @@ setSafeMode|o.a.a.server.fs.VolumeManagerImpl.isReady|1|59.392|59.392|59.392
 ## Master
 
 NN method|Accumulo method|Count|min time|max time|avg time
+---------|---------------|-----|--------|--------|--------
 complete|o.a.a.master.tableOps.LoadFiles.call|1|1.121|1.121|1.121
 complete|o.a.a.server.fs.VolumeManagerImpl.createNewFile|1|5.978|5.978|5.978
 create|o.a.a.server.fs.VolumeManagerImpl.create|1|7.714|7.714|7.714
@@ -69,6 +73,7 @@ setSafeMode|o.a.a.server.fs.VolumeManagerImpl.isReady|1|69.130|69.130|69.130
 ## GC
 
 NN method|Accumulo method|Count|min time|max time|avg time
+---------|---------------|-----|--------|--------|--------
 delete|o.a.a.server.fs.VolumeManagerImpl.deleteRecursively|10|1.814|26.879|16.456
 getFileInfo|o.a.a.server.fs.VolumeManagerImpl.exists|2|1.704|6.673|4.188
 getListing|o.a.a.core.zookeeper.ZooUtil.getInstanceIDFromHdfs|2|6.755|319.641|163.198
