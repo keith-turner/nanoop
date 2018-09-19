@@ -24,6 +24,9 @@ the test.  There was only a single tserver for the test. The times below are in
 milliseconds.  The `Accumulo method` column is the accumulo method that called
 DFS code OR the method at the bottom of the stack.
 
+This instrumentation shows that around 40K RPCs were made to import 10K files.
+The tserver made 30K RPCs and the master made 10K RPCs.
+
 ## Tablet Server
 
 NN method|Accumulo method|Count|min time|max time|avg time
