@@ -4,6 +4,7 @@ import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
@@ -18,7 +19,6 @@ import net.bytebuddy.utility.JavaModule;
 public class NamenodeAgent {
 
   private static final String CL = "org.apache.hadoop.hdfs.protocol.ClientProtocol";
-  // private static final String CL = "cmd.Goober";
 
   private static TypeDescription findClientProtocol(TypeDescription typeDescription) {
     for (TypeDescription.Generic generic : typeDescription.getInterfaces()) {
@@ -31,15 +31,15 @@ public class NamenodeAgent {
   }
 
   public static void premain(final String agentArgs, final Instrumentation inst) throws Exception {
-    System.out.printf("Starting %s\n", NamenodeAgent.class.getSimpleName());
-
+    // finds classes that implement interface CL
     RawMatcher matcher = new RawMatcher() {
       @Override
       public boolean matches(TypeDescription typeDescription, ClassLoader classLoader, JavaModule module, Class<?> classBeingRedefined,
           ProtectionDomain protectionDomain) {
 
+        // exclude proxy class that DFSClient creates for retry purposes
         if (findClientProtocol(typeDescription) != null && !typeDescription.getActualName().startsWith("com.sun.proxy")) {
-          System.out.println("Found subclass " + typeDescription.getActualName());
+          System.out.println("Nanoop is instrumenting " + typeDescription.getActualName());
           return true;
         }
 
@@ -57,19 +57,26 @@ public class NamenodeAgent {
 
     };
 
-    new AgentBuilder.Default().type(matcher).transform(transformer)
-        // .with(AgentBuilder.Listener.StreamWriting.toSystemOut())
-        .with(AgentBuilder.TypeStrategy.Default.REDEFINE).installOn(inst);
+    new AgentBuilder.Default().type(matcher).transform(transformer).with(AgentBuilder.TypeStrategy.Default.REDEFINE).installOn(inst);
 
-    Thread sd = new Thread(() -> callStats.forEach((k, v) -> System.out.println(v + "\n" + k)));
+    Thread sd = new Thread(() -> dump());
     Runtime.getRuntime().addShutdownHook(sd);
   }
 
+  // this code is inlined at the beginning of each NN rpc function
   @Advice.OnMethodEnter
   public static long enter() {
-    // System.out.println("Enter "+method.getDeclaringClass().getSimpleName()+"."+method.getName()+" "+Arrays.toString(args));
-    // Thread.dumpStack();
     return System.nanoTime();
+  }
+
+  // this code is inlined at the end of each NN rpc function
+  @Advice.OnMethodExit
+  public static void exit(@Advice.Enter final long startTime) {
+    long endTime = System.nanoTime();
+
+    StackTraceElement[] st = Thread.currentThread().getStackTrace();
+
+    callStats.computeIfAbsent(createKey(st), CIA).addDuration(endTime - startTime, TimeUnit.NANOSECONDS);
   }
 
   public static class CallInfo {
@@ -77,25 +84,30 @@ public class NamenodeAgent {
     private long min = Long.MAX_VALUE;
     private long max = Long.MIN_VALUE;
     private long sum = 0;
+    private static final TimeUnit TIME_UNIT = TimeUnit.MICROSECONDS;
 
-    public synchronized void addTime(long t) {
-      t = t / 1000000; // TODO use timeunit
+    public synchronized void addDuration(long duration, TimeUnit tu) {
+      long t = TIME_UNIT.convert(duration, tu);
 
       count++;
-      if (t < min) {
+      if (t < min)
         min = t;
-      }
 
-      if (t > max) {
+      if (t > max)
         max = t;
-      }
 
       sum += t;
     }
 
     @Override
     public synchronized String toString() {
-      return "Count:" + count + " min:" + min + " max:" + max + " avg:" + (long) (sum / (double) count);
+      return count + "|" + format(min) + "|" + format(max) + "|" + format((long) (sum / (double) count));
+    }
+
+    private static String format(long t) {
+      if (TIME_UNIT != TimeUnit.MICROSECONDS)
+        throw new IllegalStateException();
+      return String.format("%.3f", t / 1000.0);
     }
   }
 
@@ -103,39 +115,30 @@ public class NamenodeAgent {
 
   public static final Function<String,CallInfo> CIA = k -> new CallInfo();
 
-  @Advice.OnMethodExit
-  public static void exit(@Advice.Origin java.lang.reflect.Executable method, @Advice.Enter final long startTime) {
-    System.out.println("Exit " + method.getDeclaringClass().getSimpleName() + "." + method.getName());
-
-    long endTime = System.nanoTime();
-
-    StackTraceElement[] st = Thread.currentThread().getStackTrace();
+  /**
+   * Condense a stack trace into a key that identifies two pieces of information : the NN function AND the Accumulo code making that call.
+   */
+  public static String createKey(StackTraceElement[] st) {
     StringBuilder sb = new StringBuilder();
 
-    sb.append("\tat ");
-    sb.append(st[1]);
-    sb.append('\n');
+    sb.append(st[1].getMethodName());
+    sb.append("|");
 
-    boolean found = false;
-
-    for (StackTraceElement ste : st) {
+    // append last accumulo code call if present
+    for (StackTraceElement ste : st)
       if (ste.getClassName().startsWith("org.apache.accumulo")) {
-        sb.append("\tat ");
-        sb.append(ste);
-        sb.append('\n');
-        found = true;
-        break;
+        sb.append(ste.getClassName().replace("org.apache.accumulo", "o.a.a") + "." + ste.getMethodName());
+        return sb.toString();
       }
-    }
 
-    if (!found) {
-      sb.append("\tat ");
-      sb.append(st[st.length - 1]);
-      sb.append('\n');
-    }
+    // if no accumulo elements found, then append function that started thread
+    sb.append(st[st.length - 1].getClassName() + "." + st[st.length - 1].getMethodName());
 
-    String key = sb.toString();
+    return sb.toString();
+  }
 
-    callStats.computeIfAbsent(key, CIA).addTime(endTime - startTime);
+  public static void dump() {
+    System.out.println("NN method|Accumulo method|Count|min time|max time|avg time");
+    callStats.forEach((k, v) -> System.out.println(k + "|" + v));
   }
 }
