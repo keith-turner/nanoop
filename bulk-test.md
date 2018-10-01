@@ -3,7 +3,7 @@
 Using [bulky] 10,000 files were imported into Accumulo 1.9.2 that was
 instrumented with nanoop. The table was split into 100 tablets and configured
 so that compactions would not happen.  After the test concluded all servers
-were sent SIGTERM.  The following command were run for the test.
+were sent SIGTERM.  The following commands were run for the test.
 
 ```bash
 hadoop fs -rm -R /bulk0*
@@ -25,7 +25,10 @@ milliseconds.  The `Accumulo method` column is the accumulo method that called
 DFS code OR the method at the bottom of the stack.
 
 This instrumentation shows that around 40K RPCs were made to import 10K files.
-The tserver made 30K RPCs and the master made 10K RPCs.
+The tserver made 30K RPCs and the master made 10K RPCs.  For this test files
+were only imported to a single tablet.  If a file goes to mutiple tablets,
+there may be more namenode calls.  Need to run another test that imports files
+that span multiple tablets.
 
 ## Tablet Server
 
